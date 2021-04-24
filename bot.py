@@ -220,7 +220,7 @@ def submit(update, context):
             cursor.execute(q)
             conn.commit()
 
-        update.message.reply_text('Отправил ваще сообщение админу')
+        update.message.reply_text('Отправил ваше сообщение админу')
 
 
 # function to handle errors occured in the dispatcher 
