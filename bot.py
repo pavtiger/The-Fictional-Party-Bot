@@ -12,6 +12,8 @@ conn = psycopg2.connect(dbname='TelegramActivities', user='sa',
 cursor = conn.cursor()
 
 
+# TODO: status + /task *message*
+
 def update_last_cmd(text, user):
     q = f'UPDATE public.people SET "LastCommand" = \'{text}\' WHERE "ID" = {user};'
     cursor.execute(q)
@@ -67,7 +69,7 @@ def start(update, context):
             kb = [[KeyboardButton('/task')], [KeyboardButton('/list')], [KeyboardButton('/status')]]
             kb_markup = ReplyKeyboardMarkup(kb)
             update.message.bot.send_message(chat_id=update.message.chat_id,
-                text="Здравствуйте, теперь вы админ и можете проверять решения других. Вам будут приходить посылки. Админов может быть несколько. Участники не ограниченны в посылках, и не получают никакого штрафа за отклоненные решения. \nНажмите на кнопку '/task' чтобы задать задание (оно сразу отошлется всем участникам)",
+                text="Здравствуйте, теперь вы админ и можете проверять решения других. Вам будут приходить посылки. Админов может быть несколько. Участники не ограниченны в посылках, и не получают никакого штрафа за отклоненные решения. \nНажмите на кнопку '/task' чтобы задать задание и оно сразу отошлется всем участникам (можно просто написать /task *задание* или просто /task). Еще вы можете отправить задание по времени (на ноутбуке правой кнопкой по 'отправить сообщение')",
                 reply_markup=kb_markup)
         else:
             kb = [[KeyboardButton('/help')], [KeyboardButton('/list')], [KeyboardButton('/status')]]
@@ -252,15 +254,21 @@ def score(update, context):
 
 
 def status(update, context):
+    user = update.message.from_user
+
+    q = f'SELECT "Reputation" FROM public.people WHERE "ID" = {user["id"]};'
+    cursor.execute(q)
+    cnt = cursor.fetchall()
+
     task = get_last_task_id()
     if task == -1:
-        update.message.reply_text('Заданий пока нет')
+        update.message.reply_text(f"Ваш рейтинг: {cnt[0][0]}\nЗаданий пока нет")
     else:
         q = f'SELECT "Text" FROM public.tasks WHERE "ID" = {task};'
         cursor.execute(q)
         records = cursor.fetchall()
 
-        update.message.reply_text(f"Задание номер {task + 1}:\n{records[0][0]}")
+        update.message.reply_text(f"Ваш рейтинг: {cnt[0][0]}\nТекущее задание номер {task + 1}:\n{records[0][0]}")
 
 
 def main():
