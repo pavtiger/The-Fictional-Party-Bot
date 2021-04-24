@@ -11,7 +11,6 @@ conn = psycopg2.connect(dbname='TelegramActivities', user='sa',
                         password='1qaz3edc5tgb', host='192.168.1.81', port=5433)
 cursor = conn.cursor()
 
-# TODO: Usernames 
 
 def update_last_cmd(text, user):
     q = f'UPDATE public.people SET "LastCommand" = \'{text}\' WHERE "ID" = {user};'
@@ -58,20 +57,20 @@ def start(update, context):
         cursor.execute(q)
         conn.commit()
 
-        kb = [[KeyboardButton('/help')], [KeyboardButton('/list')]]
+        kb = [[KeyboardButton('/status')], [KeyboardButton('/list')], [KeyboardButton('/help')]]
         kb_markup = ReplyKeyboardMarkup(kb)
         update.message.bot.send_message(chat_id=update.message.chat_id,
-            text="Здравствуйте, вы участник. Админ будет отправлять вам задания, и вы можете отправить картинку (можно с подписью) или просто текст ответом на самое последнее задание. У вас есть клавиратура с кнопками '/list' - это списток всех участников с их баллами. По любым вопросам и предложениям пишите @pavTiger",
+            text="Здравствуйте, вы участник. Админ будет отправлять вам задания, и вы можете отправить картинку (можно с подписью) или просто текст ответом на самое последнее задание. У вас есть клавиратура с кнопками '/list' - это списток всех участников с их баллами, а '/status' выдает последнее задание. По любым вопросам и предложениям пишите @pavTiger",
             reply_markup=kb_markup)
     else:
-        if records[0][0]:
-            kb = [[KeyboardButton('/task')], [KeyboardButton('/list')]]
+        if records[0][0]:  # Is Admin
+            kb = [[KeyboardButton('/task')], [KeyboardButton('/list')], [KeyboardButton('/status')]]
             kb_markup = ReplyKeyboardMarkup(kb)
             update.message.bot.send_message(chat_id=update.message.chat_id,
-                text="Здравствуйте, теперь вы админ и можете проверять решения других. Теперь вам будут приходить посылки. Админов может быть несколько. Участники не ограниченны в посылках, и не получают никакого штрафа за отклоненные решения. \n Нажмите на кнопку '/task' чтобы задать задание (оно сразу отошлется всем участникам)",
+                text="Здравствуйте, теперь вы админ и можете проверять решения других. Вам будут приходить посылки. Админов может быть несколько. Участники не ограниченны в посылках, и не получают никакого штрафа за отклоненные решения. \nНажмите на кнопку '/task' чтобы задать задание (оно сразу отошлется всем участникам)",
                 reply_markup=kb_markup)
         else:
-            kb = [[KeyboardButton('/help')], [KeyboardButton('/list')]]
+            kb = [[KeyboardButton('/help')], [KeyboardButton('/list')], [KeyboardButton('/status')]]
             kb_markup = ReplyKeyboardMarkup(kb)
             update.message.bot.send_message(chat_id=update.message.chat_id,
                 text="Приятно снова вас видеть",
@@ -98,7 +97,7 @@ def button(update, context):
         t = cursor.fetchall()
 
         if t == []:
-            q = f'UPDATE public.people SET "Reputation" = "Reputation" + 1 WHERE "ID" = {records[0][0]};'
+            q = f'UPDATE public.people SET "Reputation" = "Reputation" + {1} WHERE "ID" = {records[0][0]};'
             cursor.execute(q)
             conn.commit()
 
@@ -107,10 +106,13 @@ def button(update, context):
             conn.commit()
 
         bot.send_message(chat_id=records[0][0], text="Ваше решение одобрили 👍")
+
     else:
         q = f'UPDATE public.packages SET "Status" = -1 WHERE "MessageID" = {query["message"]["message_id"]} and "AdminID" = {query["message"]["chat"]["id"]}'
         cursor.execute(q)
         conn.commit()
+        bot.send_message(chat_id=query["message"]["chat"]["id"], text="Напишите коментарий к отклонению")
+        update_last_cmd("/comment_reject " + str(records[0][0]), query["message"]["chat"]["id"])
         bot.send_message(chat_id=records[0][0], text="Ваше решение отклонили 😞")
 
 
@@ -139,7 +141,12 @@ def submit(update, context):
     cursor.execute(q)
     records = cursor.fetchall()
 
-    if records[0][0] != None and records[0][0].split()[0] == "/task":
+    if records[0][0] != None and records[0][0].split()[0] == "/comment_reject":
+        bot.send_message(chat_id=records[0][0].split()[1], text=update.message.text)
+        update_last_cmd(update.message.text, user["id"])
+
+
+    elif records[0][0] != None and records[0][0].split()[0] == "/task":
         q = f'SELECT "IsAdmin" FROM public.people WHERE "ID" = {user["id"]};'
         cursor.execute(q)
         records = cursor.fetchall()
@@ -179,7 +186,8 @@ def submit(update, context):
         records = cursor.fetchall()
 
 
-        update_last_cmd(update.message.text, user["id"])
+        if update.message.text != None and update.message.text.split()[0] != "/comment_reject":
+            update_last_cmd(update.message.text, user["id"])
         last_try = get_last_try(user["id"])
 
         for name in records:
@@ -243,6 +251,18 @@ def score(update, context):
     update.message.reply_text(ans)
 
 
+def status(update, context):
+    task = get_last_task_id()
+    if task == -1:
+        update.message.reply_text('Заданий пока нет')
+    else:
+        q = f'SELECT "Text" FROM public.tasks WHERE "ID" = {task};'
+        cursor.execute(q)
+        records = cursor.fetchall()
+
+        update.message.reply_text(f"Задание номер {task + 1}:\n{records[0][0]}")
+
+
 def main():
     # create the updater, that will automatically create also a dispatcher and a queue to 
     # make them dialoge
@@ -258,6 +278,7 @@ def main():
     dispatcher.add_handler(CommandHandler("help", help))
     dispatcher.add_handler(CommandHandler("task", task))
     dispatcher.add_handler(CommandHandler("list", score))
+    dispatcher.add_handler(CommandHandler("status", status))
 
 
     dispatcher.add_handler(CallbackQueryHandler(button))
