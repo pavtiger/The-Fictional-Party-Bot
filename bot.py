@@ -10,9 +10,8 @@ from my_token import my_token
 conn = psycopg2.connect(dbname='TelegramActivities', user='sa', 
                         password='1qaz3edc5tgb', host='192.168.1.81', port=5433)
 cursor = conn.cursor()
+ 
 
-
-# TODO: /task *message* + comment function announcement + выбор задания + текст задания над кнопками + comment for "yes"
 # TODO: log errors
 
 
@@ -68,24 +67,24 @@ def start(update, context):
         cursor.execute(q)
         conn.commit()
 
-        kb = [[KeyboardButton('/status')], [KeyboardButton('/list')], [KeyboardButton('/help')]]
-        kb_markup = ReplyKeyboardMarkup(kb)
+        kb = [[KeyboardButton('/status')], [KeyboardButton('/tasks')], [KeyboardButton('/help')]]
+        kb_markup = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=kb)
         update.message.bot.send_message(chat_id=update.message.chat_id,
-            text="Здравствуйте, вы участник. Админ будет отправлять вам задания, и вы можете отправить картинку (можно с подписью) или просто текст ответом на самое последнее задание. У вас есть клавиратура с кнопками '/list' - это списток всех участников с их баллами, а '/status' выдает последнее задание. По любым вопросам и предложениям пишите @pavTiger",
+            text="Здравствуйте, вы участник. Админ будет отправлять вам задания, и вы можете отправить картинку (можно с подписью) или просто текст ответом на выбранное задание. Чтобы поменять текущее задание напишите /tasks. У вас есть клавиратура с кнопками '/status' - выдает текущее задание и ваш рейтинг. По любым вопросам и предложениям пишите @pavTiger",
             reply_markup=kb_markup)
     else:
         if records[0][0]:  # Is Admin
-            kb = [[KeyboardButton('/task')], [KeyboardButton('/list')], [KeyboardButton('/status')]]
-            kb_markup = ReplyKeyboardMarkup(kb)
+            kb = [[KeyboardButton('/newtask')], [KeyboardButton('/list')], [KeyboardButton('/status')], [KeyboardButton('/tasks')], [KeyboardButton('/wall')], [KeyboardButton('/clear')]]
+            kb_markup = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=kb)
             update.message.bot.send_message(chat_id=update.message.chat_id,
-                text="Здравствуйте, теперь вы админ и можете проверять решения других. Вам будут приходить посылки. Админов может быть несколько. Участники не ограниченны в посылках, и не получают никакого штрафа за отклоненные решения. \nНажмите на кнопку '/task' чтобы задать задание и оно сразу отошлется всем участникам (можно просто написать /task *задание* или просто /task). Еще вы можете отправить задание по времени (на ноутбуке правой кнопкой по 'отправить сообщение')",
+                text="Здравствуйте, теперь вы админ и можете проверять решения других. Вам будут приходить посылки. Участники не получают никакого штрафа за отклоненные решения.\nНажмите на кнопку '/newtask' чтобы отправить задание всем учатникам, '/clear' - очистить все рейтинги, '/wall' - сделать объявление всем участникам, '/tasks' - это сменить текущее задание, а '/list' - таблица всех участников",
                 reply_markup=kb_markup)
         else:
-            kb = [[KeyboardButton('/help')], [KeyboardButton('/list')], [KeyboardButton('/status')]]
-            kb_markup = ReplyKeyboardMarkup(kb)
+            kb = [[KeyboardButton('/status')], [KeyboardButton('/tasks')], [KeyboardButton('/help')]]
+            kb_markup = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=kb)
             update.message.bot.send_message(chat_id=update.message.chat_id,
                 text="Приятно снова вас видеть",
-                reply_markup=kb_markup)        
+                reply_markup=kb_markup)
 
 
 def button(update, context):
@@ -109,13 +108,17 @@ def button(update, context):
         cursor.execute(q)
         records = cursor.fetchall()
 
-        if query.data == "ok":
+        if query.data == "comment":
+            bot.send_message(chat_id=query["message"]["chat"]["id"], text="Напишите ваш коментарий")
+            update_last_cmd("/comment_ok " + str(records[0][0]), query["message"]["chat"]["id"])
+
+        if query.data == "ok" or query.data == "comment":
             q = f'SELECT * FROM public.packages WHERE "UserID" = {records[0][0]} and "TaskID" = {records[0][1]} and "Status" = 1;'
             cursor.execute(q)
             t = cursor.fetchall()
 
             if t == []:
-                q = f'UPDATE public.people SET "Reputation" = "Reputation" + {1} WHERE "ID" = {records[0][0]};'
+                q = f'UPDATE public.people SET "Reputation" = "Reputation" + 1 WHERE "ID" = {records[0][0]};'
                 cursor.execute(q)
                 conn.commit()
 
@@ -163,6 +166,8 @@ def do_task(message):
         records = cursor.fetchall()
 
         for name in records:
+            message.bot.send_message(chat_id=name[0], text="Новое задание:")
+
             m = message.bot.forward_message(chat_id=name[0],
                 from_chat_id=message.chat_id,
                 message_id=message.message_id)
@@ -181,6 +186,30 @@ def do_task(message):
         message.reply_text('Вы не админ')
 
 
+def do_wall(message):
+    admin = check_admin(message.from_user["id"])
+
+    if message.text == None:
+        update_last_cmd(message.caption, message.from_user["id"])
+    else:
+        update_last_cmd(message.text, message.from_user["id"])
+
+
+    if admin == True:  # If he/she is admin
+        q = f'SELECT "ID" FROM public.people WHERE not "ID" = {message.from_user["id"]};'
+        cursor.execute(q)
+        records = cursor.fetchall()
+
+        for name in records:
+            m = message.bot.forward_message(chat_id=name[0],
+                from_chat_id=message.chat_id,
+                message_id=message.message_id)
+
+        message.reply_text('Разослал ваше сообщение всем')
+    else:
+        message.reply_text('Вы не админ')
+
+
 # submit
 def submit(update, context):
     # triggered by user (general text messages)
@@ -192,23 +221,34 @@ def submit(update, context):
     cursor.execute(q)
     records = cursor.fetchall()
 
-    if records[0][0] != None and records[0][0].split()[0] == "/comment_reject":
+    if records[0][0] != None and records[0][0].split()[0] in ["/comment_reject", "/comment_ok"]:
         bot.send_message(chat_id=records[0][0].split()[1], text=update.message.text)
         update_last_cmd(update.message.text, user["id"])
 
+    elif records[0][0] != None and records[0][0].split()[0] == "/tasks":
+        try:
+            q = f'UPDATE public.people SET "ActiveTaskID" = {int(update.message.text)} WHERE "ID" = {user["id"]};'
+            cursor.execute(q)
+            conn.commit()
+            update_last_cmd(update.message.text, user["id"])
+            status(update, context)
+        except:
+            update.message.reply_text('Пожалуйста отправьте номер задания')
 
-    elif records[0][0] != None and records[0][0].split()[0] == "/task":
+    elif records[0][0] != None and records[0][0].split()[0] == "/newtask":
         do_task(update.message)
 
-    else:
+    elif records[0][0] != None and records[0][0].split()[0] == "/wall":
+        do_wall(update.message)
 
+    else:
         q = f'SELECT "ID" FROM public.people WHERE "IsAdmin" = true;'
         cursor.execute(q)
         records = cursor.fetchall()
 
-
-        if update.message.text != None and update.message.text.split()[0] != "/comment_reject":
+        if update.message.text != None and not update.message.text.split()[0] in ["/comment_reject", "/comment_ok"]:
             update_last_cmd(update.message.text, user["id"])
+
         last_try = get_last_try(user["id"])
 
         for name in records:
@@ -219,23 +259,36 @@ def submit(update, context):
 
             m = update.message.bot.forward_message(chat_id=name[0],
                                     from_chat_id=update.message.chat_id,
-                                    message_id=update.message.message_id,
-                                    disable_notification=True)
+                                    message_id=update.message.message_id)
 
             keyboard = [
-                [InlineKeyboardButton("Хорошо", callback_data='ok')],
+                [InlineKeyboardButton("Отлично", callback_data='ok')],
+                [InlineKeyboardButton("Хорошо с комментарием", callback_data='comment')],
                 [InlineKeyboardButton("Отклонить", callback_data='reject')]
             ]
 
             reply_markup = InlineKeyboardMarkup(keyboard)
-            message_reply_text = check_none(user["first_name"]) + ' ' + check_none(user["last_name"])
+
+            q = f'SELECT "ActiveTaskID" FROM public.people WHERE "ID" = {user["id"]};'
+            cursor.execute(q)
+            cnt = cursor.fetchall()
+
+            if cnt[0][0] == None:
+                current_task = get_last_task_id()
+            else:
+                current_task = cnt[0][0]
+
+            q = f'SELECT "Text" FROM public.tasks WHERE "ID" = {current_task};'
+            cursor.execute(q)
+            thetask = cursor.fetchall()
+
+            message_reply_text = check_none(thetask[0][0])
 
             button = update.message.bot.send_message(chat_id=m["chat"]["id"],
                 text=message_reply_text,
-                reply_markup=reply_markup,
-                disable_notification=True)
+                reply_markup=reply_markup)
 
-            q = f'INSERT INTO public.packages("UserID", "TaskID", "MessageID", "AdminID", "TryID") VALUES ({user["id"]}, \'{task}\', \'{button["message_id"]}\', \'{button["chat"]["id"]}\', \'{last_try + 1}\');'
+            q = f'INSERT INTO public.packages("UserID", "TaskID", "MessageID", "AdminID", "TryID") VALUES ({user["id"]}, \'{current_task}\', \'{button["message_id"]}\', \'{button["chat"]["id"]}\', \'{last_try + 1}\');'
             cursor.execute(q)
             conn.commit()
 
@@ -278,13 +331,18 @@ def score(update, context):
 
 
 def status(update, context):
+    update_last_cmd(update.message.text, update.message.from_user["id"])
     user = update.message.from_user
 
-    q = f'SELECT "Reputation" FROM public.people WHERE "ID" = {user["id"]};'
+    q = f'SELECT "Reputation", "ActiveTaskID" FROM public.people WHERE "ID" = {user["id"]};'
     cursor.execute(q)
     cnt = cursor.fetchall()
 
-    task = get_last_task_id()
+    if cnt[0][1] == None:
+        task = get_last_task_id()
+    else:
+        task = cnt[0][1]
+
     if task == -1:
         update.message.reply_text(f"Ваш рейтинг: {cnt[0][0]}\nЗаданий пока нет")
     else:
@@ -297,9 +355,10 @@ def status(update, context):
         p = cursor.fetchall()
 
         if p[0][0] == 0:
-            update.message.reply_text(f"Ваш рейтинг: {cnt[0][0]}\nПоследнее задание номер {task + 1}:\n{records[0][0]}")
+            update.message.reply_text(f"Ваш рейтинг: {cnt[0][0]}\nТекущее задание номер {task}:\n{records[0][0]}")
         else:
-            update.message.reply_text(f"Ваш рейтинг: {cnt[0][0]}\nПоследнее задание решено")
+            update.message.reply_text(f"Ваш рейтинг: {cnt[0][0]}\nТекущее задание решено")
+
 
 def clear(update, context):
     admin = check_admin(update.message.from_user["id"])
@@ -313,10 +372,36 @@ def clear(update, context):
 
         button = update.message.bot.send_message(chat_id=update.message.chat_id,
             text="Вы уверены что хотите очистить баллы у всех участников?",
-            reply_markup=reply_markup,
-            disable_notification=True)
+            reply_markup=reply_markup)
     else:
         update.message.reply_text("Только админ может пользоваться этой командой")
+
+
+def problems(update, context):
+    update_last_cmd(update.message.text, update.message.from_user["id"])
+
+    q = f'SELECT * FROM public.tasks AS T WHERE not EXISTS( SELECT * FROM public.packages AS P WHERE P."TaskID" = T."ID" and "UserID" = {update.message.from_user["id"]} and "Status" = 1 )'
+    dat = sqlio.read_sql_query(q, conn)
+    
+    ans = ""
+    for index, row in dat.iterrows():
+        ans += f'{str(row["ID"])}: {"".join(row["Text"].rstrip())}\n';
+    ans += "Введите номер для смены текущего задания"
+
+    update.message.reply_text(ans)
+
+
+def wall(update, context):
+    admin = check_admin(update.message.from_user["id"])
+
+    if admin == True:  # If he/she is admin
+        update_last_cmd(update.message.text, update.message.from_user["id"])
+        if len(update.message.text.split()) > 1:
+            do_wall(update.message)
+        else:
+            update.message.reply_text("Введите сообщение")
+    else:
+        update.message.reply_text("Вы не админ")
 
 
 def main():
@@ -332,10 +417,12 @@ def main():
     # add handlers for start and help commands
     dispatcher.add_handler(CommandHandler("start", start))
     dispatcher.add_handler(CommandHandler("help", help))
-    dispatcher.add_handler(CommandHandler("task", task))
+    dispatcher.add_handler(CommandHandler("newtask", task))
     dispatcher.add_handler(CommandHandler("list", score))
     dispatcher.add_handler(CommandHandler("status", status))
     dispatcher.add_handler(CommandHandler("clear", clear))
+    dispatcher.add_handler(CommandHandler("tasks", problems))
+    dispatcher.add_handler(CommandHandler("wall", wall))
 
 
     dispatcher.add_handler(CallbackQueryHandler(button))
