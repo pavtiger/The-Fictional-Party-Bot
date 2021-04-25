@@ -12,8 +12,16 @@ conn = psycopg2.connect(dbname='TelegramActivities', user='sa',
 cursor = conn.cursor()
 
 
-# TODO: /task *message* + comment function announcement + обнулить баллы (с подтверждением) + выбор задания + текст задания над кнопками
+# TODO: /task *message* + comment function announcement + выбор задания + текст задания над кнопками + comment for "yes"
 # TODO: log errors
+
+
+def check_admin(userid):
+    q = f'SELECT "IsAdmin" FROM public.people WHERE "ID" = {userid};'
+    cursor.execute(q)
+    records = cursor.fetchall()
+    return records[0][0]
+
 
 def update_last_cmd(text, user):
     q = f'UPDATE public.people SET "LastCommand" = \'{text}\' WHERE "ID" = {user};'
@@ -90,41 +98,48 @@ def button(update, context):
     query.edit_message_text(text=f"Ответ: {query.data}")
 
 
-    q = f'SELECT "UserID", "TaskID", "TryID" FROM public.packages WHERE "MessageID" = {query["message"]["message_id"]} and "AdminID" = {query["message"]["chat"]["id"]};'
-    cursor.execute(q)
-    records = cursor.fetchall()
-
-    if query.data == "ok":
-        q = f'SELECT * FROM public.packages WHERE "UserID" = {records[0][0]} and "TaskID" = {records[0][1]} and "Status" = 1;'
-        cursor.execute(q)
-        t = cursor.fetchall()
-
-        if t == []:
-            q = f'UPDATE public.people SET "Reputation" = "Reputation" + {1} WHERE "ID" = {records[0][0]};'
+    if query.data == "no" or query.data == "yes":
+        if query.data == "yes":
+            q = f'UPDATE public.people SET "Reputation" = 0;'
             cursor.execute(q)
             conn.commit()
-
-            q = f'UPDATE public.packages SET "Status" = 1 WHERE "MessageID" = {query["message"]["message_id"]} and "AdminID" = {query["message"]["chat"]["id"]}'
-            cursor.execute(q)
-            conn.commit()
-
-        bot.send_message(chat_id=records[0][0], text="Ваше решение одобрили 👍")
-
+            bot.send_message(chat_id=query["message"]["chat"]["id"], text="Рейтинги очищены")
     else:
-        q = f'UPDATE public.packages SET "Status" = -1 WHERE "MessageID" = {query["message"]["message_id"]} and "AdminID" = {query["message"]["chat"]["id"]}'
+        q = f'SELECT "UserID", "TaskID", "TryID" FROM public.packages WHERE "MessageID" = {query["message"]["message_id"]} and "AdminID" = {query["message"]["chat"]["id"]};'
         cursor.execute(q)
-        conn.commit()
-        bot.send_message(chat_id=query["message"]["chat"]["id"], text="Напишите коментарий к отклонению")
-        update_last_cmd("/comment_reject " + str(records[0][0]), query["message"]["chat"]["id"])
-        bot.send_message(chat_id=records[0][0], text="Ваше решение отклонили 😞")
+        records = cursor.fetchall()
+
+        if query.data == "ok":
+            q = f'SELECT * FROM public.packages WHERE "UserID" = {records[0][0]} and "TaskID" = {records[0][1]} and "Status" = 1;'
+            cursor.execute(q)
+            t = cursor.fetchall()
+
+            if t == []:
+                q = f'UPDATE public.people SET "Reputation" = "Reputation" + {1} WHERE "ID" = {records[0][0]};'
+                cursor.execute(q)
+                conn.commit()
+
+                q = f'UPDATE public.packages SET "Status" = 1 WHERE "MessageID" = {query["message"]["message_id"]} and "AdminID" = {query["message"]["chat"]["id"]}'
+                cursor.execute(q)
+                conn.commit()
+
+            bot.send_message(chat_id=records[0][0], text="Ваше решение одобрили 👍")
+
+        else:
+            q = f'UPDATE public.packages SET "Status" = -1 WHERE "MessageID" = {query["message"]["message_id"]} and "AdminID" = {query["message"]["chat"]["id"]}'
+            cursor.execute(q)
+            conn.commit()
+            bot.send_message(chat_id=query["message"]["chat"]["id"], text="Напишите коментарий к отклонению")
+            update_last_cmd("/comment_reject " + str(records[0][0]), query["message"]["chat"]["id"])
+            bot.send_message(chat_id=records[0][0], text="Ваше решение отклонили 😞")
 
 
-    q = f'SELECT "AdminID", "MessageID" FROM public.packages WHERE "TryID" = {records[0][2]} and "UserID" = {records[0][0]};'
-    cursor.execute(q)
-    buttons = cursor.fetchall()
-    for m in buttons:
-        if m[0] != query["message"]["chat"]["id"]:
-            bot.edit_message_text(text=f"Другой админ ответил: {query.data}", chat_id=m[0], message_id=m[1])
+        q = f'SELECT "AdminID", "MessageID" FROM public.packages WHERE "TryID" = {records[0][2]} and "UserID" = {records[0][0]};'
+        cursor.execute(q)
+        buttons = cursor.fetchall()
+        for m in buttons:
+            if m[0] != query["message"]["chat"]["id"]:
+                bot.edit_message_text(text=f"Другой админ ответил: {query.data}", chat_id=m[0], message_id=m[1])
 
 
 # function to handle the /help command
@@ -134,16 +149,15 @@ def help(update, context):
 
 
 def do_task(message):
-    q = f'SELECT "IsAdmin" FROM public.people WHERE "ID" = {message.from_user["id"]};'
-    cursor.execute(q)
-    records = cursor.fetchall()
+    admin = check_admin(message.from_user["id"])
+
     if message.text == None:
         update_last_cmd(message.caption, message.from_user["id"])
     else:
         update_last_cmd(message.text, message.from_user["id"])
 
 
-    if records[0][0] == True:  # If he/she is admin
+    if admin == True:  # If he/she is admin
         q = f'SELECT "ID" FROM public.people WHERE not "ID" = {message.from_user["id"]};'
         cursor.execute(q)
         records = cursor.fetchall()
@@ -234,11 +248,9 @@ def error(update, context):
 
 
 def task(update, context):
-    q = f'SELECT "IsAdmin" FROM public.people WHERE "ID" = {update.message.from_user["id"]};'
-    cursor.execute(q)
-    records = cursor.fetchall()
+    admin = check_admin(update.message.from_user["id"])
 
-    if records[0][0] == True:  # If he/she is admin
+    if admin == True:  # If he/she is admin
         update_last_cmd(update.message.text, update.message.from_user["id"])
         if len(update.message.text.split()) > 1:
             do_task(update.message)
@@ -250,10 +262,7 @@ def task(update, context):
 
 def score(update, context):
     update_last_cmd(update.message.text, update.message.from_user["id"])
-
-    q = f'SELECT "IsAdmin" FROM public.people WHERE "ID" = {update.message.from_user["id"]};'
-    cursor.execute(q)
-    records = cursor.fetchall()
+    admin = check_admin(update.message.from_user["id"])
 
     q = f'SELECT * FROM public.people'
     dat = sqlio.read_sql_query(q, conn)
@@ -262,7 +271,7 @@ def score(update, context):
     for index, row in dat.iterrows():
         ans += f'{str(row["Reputation"])} - {"".join(row["FirstName"].rstrip())} {"".join(row["LastName"].rstrip())}\n';
 
-    if records[0][0] == True:
+    if admin == True:
         update.message.reply_text(ans)
     else:
         update.message.reply_text("Только админ может пользоваться этой командой")
@@ -292,6 +301,23 @@ def status(update, context):
         else:
             update.message.reply_text(f"Ваш рейтинг: {cnt[0][0]}\nПоследнее задание решено")
 
+def clear(update, context):
+    admin = check_admin(update.message.from_user["id"])
+    if admin:
+        keyboard = [
+                [InlineKeyboardButton("Да, удалить", callback_data='yes')],
+                [InlineKeyboardButton("Нет", callback_data='no')]
+        ]
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        button = update.message.bot.send_message(chat_id=update.message.chat_id,
+            text="Вы уверены что хотите очистить баллы у всех участников?",
+            reply_markup=reply_markup,
+            disable_notification=True)
+    else:
+        update.message.reply_text("Только админ может пользоваться этой командой")
+
 
 def main():
     # create the updater, that will automatically create also a dispatcher and a queue to 
@@ -309,6 +335,7 @@ def main():
     dispatcher.add_handler(CommandHandler("task", task))
     dispatcher.add_handler(CommandHandler("list", score))
     dispatcher.add_handler(CommandHandler("status", status))
+    dispatcher.add_handler(CommandHandler("clear", clear))
 
 
     dispatcher.add_handler(CallbackQueryHandler(button))
