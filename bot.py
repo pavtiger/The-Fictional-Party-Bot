@@ -12,7 +12,8 @@ conn = psycopg2.connect(dbname='TelegramActivities', user='sa',
 cursor = conn.cursor()
 
 
-# TODO: status + /task *message*
+# TODO: /task *message* + comment function announcement + обнулить баллы (с подтверждением) + выбор задания + текст задания над кнопками
+# TODO: log errors
 
 def update_last_cmd(text, user):
     q = f'UPDATE public.people SET "LastCommand" = \'{text}\' WHERE "ID" = {user};'
@@ -129,12 +130,46 @@ def button(update, context):
 # function to handle the /help command
 def help(update, context):
     update_last_cmd(update.message.text, update.message.from_user["id"])
-    update.message.reply_text("У вас есть клавиратура с кнопками '/list' - это списток всех участников с их баллами, '/task' - это установка задания (только для админов)")
+    update.message.reply_text("У вас есть клавиратура с кнопками /status' - дает информацию о текущей задаче и вашем рейтинге, а чтобы сдать задачу нужно просто написать текст или ")
+
+
+def do_task(message):
+    q = f'SELECT "IsAdmin" FROM public.people WHERE "ID" = {message.from_user["id"]};'
+    cursor.execute(q)
+    records = cursor.fetchall()
+    if message.text == None:
+        update_last_cmd(message.caption, message.from_user["id"])
+    else:
+        update_last_cmd(message.text, message.from_user["id"])
+
+
+    if records[0][0] == True:  # If he/she is admin
+        q = f'SELECT "ID" FROM public.people WHERE not "ID" = {message.from_user["id"]};'
+        cursor.execute(q)
+        records = cursor.fetchall()
+
+        for name in records:
+            m = message.bot.forward_message(chat_id=name[0],
+                from_chat_id=message.chat_id,
+                message_id=message.message_id)
+
+        if message.text == None:
+            q = f'INSERT INTO public.tasks("ID", "Text") VALUES ({get_last_task_id() + 1}, \'{message.caption.replace("/task ", "")}\');'
+            cursor.execute(q)
+            conn.commit()
+        else:
+            q = f'INSERT INTO public.tasks("ID", "Text") VALUES ({get_last_task_id() + 1}, \'{message.text.replace("/task ", "")}\');'
+            cursor.execute(q)
+            conn.commit()
+
+        message.reply_text('Разослал ваше задание всем')
+    else:
+        message.reply_text('Вы не админ')
 
 
 # submit
 def submit(update, context):
-    # triggered by user
+    # triggered by user (general text messages)
 
     user = update.message.from_user
 
@@ -149,37 +184,7 @@ def submit(update, context):
 
 
     elif records[0][0] != None and records[0][0].split()[0] == "/task":
-        q = f'SELECT "IsAdmin" FROM public.people WHERE "ID" = {user["id"]};'
-        cursor.execute(q)
-        records = cursor.fetchall()
-        if update.message.text == None:
-            update_last_cmd(update.message.caption, user["id"])
-        else:
-            update_last_cmd(update.message.text, user["id"])
-
-
-        if records[0][0] == True:  # If he is admin
-            q = f'SELECT "ID" FROM public.people WHERE not "ID" = {user["id"]};'
-            cursor.execute(q)
-            records = cursor.fetchall()
-
-            for name in records:
-                m = update.message.bot.forward_message(chat_id=name[0],
-                    from_chat_id=update.message.chat_id,
-                    message_id=update.message.message_id)
-
-            if update.message.text == None:
-                q = f'INSERT INTO public.tasks("ID", "Text") VALUES ({get_last_task_id() + 1}, \'{update.message.caption}\');'
-                cursor.execute(q)
-                conn.commit()
-            else:
-                q = f'INSERT INTO public.tasks("ID", "Text") VALUES ({get_last_task_id() + 1}, \'{update.message.text}\');'
-                cursor.execute(q)
-                conn.commit()
-
-            update.message.reply_text('Разослал ваше задание всем')
-        else:
-            update.message.reply_text('Вы не админ')
+        do_task(update.message)
 
     else:
 
@@ -233,15 +238,22 @@ def task(update, context):
     cursor.execute(q)
     records = cursor.fetchall()
 
-    if records[0][0] == True:  # If he is admin
+    if records[0][0] == True:  # If he/she is admin
         update_last_cmd(update.message.text, update.message.from_user["id"])
-        update.message.reply_text('Введите задание')
+        if len(update.message.text.split()) > 1:
+            do_task(update.message)
+        else:
+            update.message.reply_text("Введите задание")
     else:
-        update.message.reply_text('Вы не админ')
+        update.message.reply_text("Вы не админ")
         
 
 def score(update, context):
     update_last_cmd(update.message.text, update.message.from_user["id"])
+
+    q = f'SELECT "IsAdmin" FROM public.people WHERE "ID" = {update.message.from_user["id"]};'
+    cursor.execute(q)
+    records = cursor.fetchall()
 
     q = f'SELECT * FROM public.people'
     dat = sqlio.read_sql_query(q, conn)
@@ -250,7 +262,10 @@ def score(update, context):
     for index, row in dat.iterrows():
         ans += f'{str(row["Reputation"])} - {"".join(row["FirstName"].rstrip())} {"".join(row["LastName"].rstrip())}\n';
 
-    update.message.reply_text(ans)
+    if records[0][0] == True:
+        update.message.reply_text(ans)
+    else:
+        update.message.reply_text("Только админ может пользоваться этой командой")
 
 
 def status(update, context):
@@ -268,7 +283,14 @@ def status(update, context):
         cursor.execute(q)
         records = cursor.fetchall()
 
-        update.message.reply_text(f"Ваш рейтинг: {cnt[0][0]}\nТекущее задание номер {task + 1}:\n{records[0][0]}")
+        q = f'SELECT COUNT(*) FROM public.packages WHERE "Status" = 1 and "UserID" = {user["id"]} and "TaskID" = {task};'
+        cursor.execute(q)
+        p = cursor.fetchall()
+
+        if p[0][0] == 0:
+            update.message.reply_text(f"Ваш рейтинг: {cnt[0][0]}\nПоследнее задание номер {task + 1}:\n{records[0][0]}")
+        else:
+            update.message.reply_text(f"Ваш рейтинг: {cnt[0][0]}\nПоследнее задание решено")
 
 
 def main():
