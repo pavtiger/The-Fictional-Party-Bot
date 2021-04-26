@@ -358,15 +358,18 @@ def clear(update, context):
 def problems(update, context):
     update_last_cmd(update.message.text, update.message.from_user["id"])
 
-    q = f'SELECT * FROM public.tasks AS T WHERE not EXISTS( SELECT * FROM public.packages AS P WHERE P."TaskID" = T."ID" and "UserID" = {update.message.from_user["id"]} and "Status" = 1 )'
-    dat = sqlio.read_sql_query(q, conn)
-    
-    ans = ""
-    for index, row in dat.iterrows():
-        ans += f'{str(row["ID"])}: {"".join(row["Text"].rstrip())}\n';
-    ans += "Введите номер для смены текущего задания"
+    if get_last_task_id() == -1:
+        update.message.reply_text("Заданий пока нет")
+    else:
+        q = f'SELECT * FROM public.tasks AS T WHERE not EXISTS( SELECT * FROM public.packages AS P WHERE P."TaskID" = T."ID" and "UserID" = {update.message.from_user["id"]} and "Status" = 1 )'
+        dat = sqlio.read_sql_query(q, conn)
+        
+        ans = ""
+        for index, row in dat.iterrows():
+            ans += f'{str(row["ID"])}: {"".join(row["Text"].rstrip())}\n';
+        ans += "Введите номер для смены текущего задания"
 
-    update.message.reply_text(ans)
+        update.message.reply_text(ans)
 
 
 def wall(update, context):
