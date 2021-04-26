@@ -52,15 +52,18 @@ def check_none(name):
     return name
 
 
+def fetch(query):
+    cursor.execute(query)
+    return cursor.fetchall()
+
+
 # function to handle the /start command
 def start(update, context):
     update_last_cmd(update.message.text, update.message.from_user["id"])
     user = update.message.from_user
     name = user["id"]
     
-    q = f'SELECT "IsAdmin" FROM public.people WHERE "ID" = {user["id"]};'
-    cursor.execute(q)
-    records = cursor.fetchall()
+    records = fetch(f'SELECT "IsAdmin" FROM public.people WHERE "ID" = {user["id"]};')
     
     if records == []:
         q = f'INSERT INTO public.people("ID", "FirstName", "LastName", "Username") VALUES ({user["id"]}, \'{check_none(user["first_name"])}\', \'{check_none(user["last_name"])}\', \'{user["username"]}\');'
@@ -104,18 +107,14 @@ def button(update, context):
             conn.commit()
             bot.send_message(chat_id=query["message"]["chat"]["id"], text="Рейтинги очищены")
     else:
-        q = f'SELECT "UserID", "TaskID", "TryID" FROM public.packages WHERE "MessageID" = {query["message"]["message_id"]} and "AdminID" = {query["message"]["chat"]["id"]};'
-        cursor.execute(q)
-        records = cursor.fetchall()
+        records = fetch(f'SELECT "UserID", "TaskID", "TryID" FROM public.packages WHERE "MessageID" = {query["message"]["message_id"]} and "AdminID" = {query["message"]["chat"]["id"]};')
 
         if query.data == "comment":
             bot.send_message(chat_id=query["message"]["chat"]["id"], text="Напишите ваш коментарий")
             update_last_cmd("/comment_ok " + str(records[0][0]), query["message"]["chat"]["id"])
 
         if query.data == "ok" or query.data == "comment":
-            q = f'SELECT * FROM public.packages WHERE "UserID" = {records[0][0]} and "TaskID" = {records[0][1]} and "Status" = 1;'
-            cursor.execute(q)
-            t = cursor.fetchall()
+            t = fetch(f'SELECT * FROM public.packages WHERE "UserID" = {records[0][0]} and "TaskID" = {records[0][1]} and "Status" = 1;')
 
             if t == []:
                 q = f'UPDATE public.people SET "Reputation" = "Reputation" + 1 WHERE "ID" = {records[0][0]};'
@@ -137,9 +136,7 @@ def button(update, context):
             bot.send_message(chat_id=records[0][0], text="Ваше решение отклонили 😞")
 
 
-        q = f'SELECT "AdminID", "MessageID" FROM public.packages WHERE "TryID" = {records[0][2]} and "UserID" = {records[0][0]};'
-        cursor.execute(q)
-        buttons = cursor.fetchall()
+        buttons = fetch(f'SELECT "AdminID", "MessageID" FROM public.packages WHERE "TryID" = {records[0][2]} and "UserID" = {records[0][0]};')
         for m in buttons:
             if m[0] != query["message"]["chat"]["id"]:
                 bot.edit_message_text(text=f"Другой админ ответил: {query.data}", chat_id=m[0], message_id=m[1])
@@ -161,9 +158,7 @@ def do_task(message):
 
 
     if admin == True:  # If he/she is admin
-        q = f'SELECT "ID" FROM public.people WHERE not "ID" = {message.from_user["id"]};'
-        cursor.execute(q)
-        records = cursor.fetchall()
+        records = fetch(f'SELECT "ID" FROM public.people WHERE not "ID" = {message.from_user["id"]};')
 
         for name in records:
             message.bot.send_message(chat_id=name[0], text="Новое задание:")
@@ -196,9 +191,7 @@ def do_wall(message):
 
 
     if admin == True:  # If he/she is admin
-        q = f'SELECT "ID" FROM public.people WHERE not "ID" = {message.from_user["id"]};'
-        cursor.execute(q)
-        records = cursor.fetchall()
+        records = fetch(f'SELECT "ID" FROM public.people WHERE not "ID" = {message.from_user["id"]};')
 
         for name in records:
             m = message.bot.forward_message(chat_id=name[0],
@@ -213,13 +206,10 @@ def do_wall(message):
 # submit
 def submit(update, context):
     # triggered by user (general text messages)
-
     user = update.message.from_user
 
 
-    q = f'SELECT "LastCommand" FROM public.people WHERE "ID" = {user["id"]};'
-    cursor.execute(q)
-    records = cursor.fetchall()
+    records = fetch(f'SELECT "LastCommand" FROM public.people WHERE "ID" = {user["id"]};')
 
     if records[0][0] != None and records[0][0].split()[0] in ["/comment_reject", "/comment_ok"]:
         bot.send_message(chat_id=records[0][0].split()[1], text=update.message.text)
@@ -242,9 +232,7 @@ def submit(update, context):
         do_wall(update.message)
 
     else:
-        q = f'SELECT "ID" FROM public.people WHERE "IsAdmin" = true;'
-        cursor.execute(q)
-        records = cursor.fetchall()
+        records = fetch(f'SELECT "ID" FROM public.people WHERE "IsAdmin" = true;')
 
         if update.message.text != None and not update.message.text.split()[0] in ["/comment_reject", "/comment_ok"]:
             update_last_cmd(update.message.text, user["id"])
@@ -269,18 +257,14 @@ def submit(update, context):
 
             reply_markup = InlineKeyboardMarkup(keyboard)
 
-            q = f'SELECT "ActiveTaskID" FROM public.people WHERE "ID" = {user["id"]};'
-            cursor.execute(q)
-            cnt = cursor.fetchall()
+            cnt = fetch(f'SELECT "ActiveTaskID" FROM public.people WHERE "ID" = {user["id"]};')
 
             if cnt[0][0] == None:
                 current_task = get_last_task_id()
             else:
                 current_task = cnt[0][0]
 
-            q = f'SELECT "Text" FROM public.tasks WHERE "ID" = {current_task};'
-            cursor.execute(q)
-            thetask = cursor.fetchall()
+            thetask = fetch(f'SELECT "Text" FROM public.tasks WHERE "ID" = {current_task};')
 
             message_reply_text = check_none(thetask[0][0])
 
@@ -334,9 +318,7 @@ def status(update, context):
     update_last_cmd(update.message.text, update.message.from_user["id"])
     user = update.message.from_user
 
-    q = f'SELECT "Reputation", "ActiveTaskID" FROM public.people WHERE "ID" = {user["id"]};'
-    cursor.execute(q)
-    cnt = cursor.fetchall()
+    cnt = fetch(f'SELECT "Reputation", "ActiveTaskID" FROM public.people WHERE "ID" = {user["id"]};')
 
     if cnt[0][1] == None:
         task = get_last_task_id()
@@ -346,13 +328,9 @@ def status(update, context):
     if task == -1:
         update.message.reply_text(f"Ваш рейтинг: {cnt[0][0]}\nЗаданий пока нет")
     else:
-        q = f'SELECT "Text" FROM public.tasks WHERE "ID" = {task};'
-        cursor.execute(q)
-        records = cursor.fetchall()
+        records = fetch(f'SELECT "Text" FROM public.tasks WHERE "ID" = {task};')
 
-        q = f'SELECT COUNT(*) FROM public.packages WHERE "Status" = 1 and "UserID" = {user["id"]} and "TaskID" = {task};'
-        cursor.execute(q)
-        p = cursor.fetchall()
+        p = fetch(f'SELECT COUNT(*) FROM public.packages WHERE "Status" = 1 and "UserID" = {user["id"]} and "TaskID" = {task};')
 
         if p[0][0] == 0:
             update.message.reply_text(f"Ваш рейтинг: {cnt[0][0]}\nТекущее задание номер {task}:\n{records[0][0]}")
