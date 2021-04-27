@@ -12,8 +12,6 @@ conn = psycopg2.connect(dbname='TelegramActivities', user='sa',
 cursor = conn.cursor()
  
 
-# TODO: log errors
-
 
 def check_admin(userid):
     q = f'SELECT "IsAdmin" FROM public.people WHERE "ID" = {userid};'
@@ -73,14 +71,14 @@ def start(update, context):
         kb = [[KeyboardButton('/status')], [KeyboardButton('/tasks')], [KeyboardButton('/help')]]
         kb_markup = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=kb)
         update.message.bot.send_message(chat_id=update.message.chat_id,
-            text="Здравствуйте, вы участник. Админ будет отправлять вам задания, и вы можете отправить картинку (можно с подписью) или просто текст ответом на выбранное задание. Чтобы поменять текущее задание напишите /tasks. У вас есть клавиратура с кнопками '/status' - выдает текущее задание и ваш рейтинг. По любым вопросам и предложениям пишите @pavTiger",
+            text="Здравствуйте, вы участник. Ведущий будет отправлять вам задания, на которые нужно присылать ответы картинкой с подписью или просто текстом. Если вы хотите переключить текущее задание нажмите кнопку /tasks. Также можно воспользоваться кнопкой /status и /help. Поддержка и предложения: @pavTiger",
             reply_markup=kb_markup)
     else:
         if records[0][0]:  # Is Admin
-            kb = [[KeyboardButton('/newtask')], [KeyboardButton('/list')], [KeyboardButton('/status')], [KeyboardButton('/tasks')], [KeyboardButton('/wall')], [KeyboardButton('/clear')]]
+            kb = [[KeyboardButton('/newtask')], [KeyboardButton('/list')], [KeyboardButton('/status')], [KeyboardButton('/tasks')], [KeyboardButton('/announcement')], [KeyboardButton('/clear')]]
             kb_markup = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=kb)
             update.message.bot.send_message(chat_id=update.message.chat_id,
-                text="Здравствуйте, теперь вы админ и можете проверять решения других. Вам будут приходить посылки. Участники не получают никакого штрафа за отклоненные решения.\nНажмите на кнопку '/newtask' чтобы отправить задание всем учатникам, '/clear' - очистить все рейтинги, '/wall' - сделать объявление всем участникам, '/tasks' - это сменить текущее задание, а '/list' - таблица всех участников",
+                text="Здравствуйте, теперь вы админ и можете проверять решения других. Вам будут приходить посылки. Участники не получают никакого штрафа за отклоненные решения.\nНажмите на кнопку '/newtask' чтобы отправить задание всем учатникам, '/clear' - очистить все рейтинги, '/announcement' - сделать объявление всем участникам, '/tasks' - это сменить текущее задание, а '/list' - таблица всех участников",
                 reply_markup=kb_markup)
         else:
             kb = [[KeyboardButton('/status')], [KeyboardButton('/tasks')], [KeyboardButton('/help')]]
@@ -145,7 +143,8 @@ def button(update, context):
 # function to handle the /help command
 def help(update, context):
     update_last_cmd(update.message.text, update.message.from_user["id"])
-    update.message.reply_text("У вас есть клавиратура с кнопками /status' - дает информацию о текущей задаче и вашем рейтинге, а чтобы сдать задачу нужно просто написать текст или ")
+    update.message.reply_text("```\n   __ __   ____   __    ___\n  / // /  / __/  / /   / _ | \n / _  /  / _/   / /__ / ___/\n/_//_/  /___/  /____//_/\n```",
+        parse_mode=telegram.ParseMode.MARKDOWN_V2)
 
 
 def do_task(message):
@@ -168,7 +167,7 @@ def do_task(message):
                 message_id=message.message_id)
 
         if message.text == None:
-            q = f'INSERT INTO public.tasks("ID", "Text") VALUES ({get_last_task_id() + 1}, \'{message.caption.replace("/task ", "")}\');'
+            q = f'INSERT INTO public.tasks("ID", "Text") VALUES ({get_last_task_id() + 1}, \'{check_none(message.caption).replace("/task ", "")}\');'
             cursor.execute(q)
             conn.commit()
         else:
@@ -228,7 +227,7 @@ def submit(update, context):
     elif records[0][0] != None and records[0][0].split()[0] == "/newtask":
         do_task(update.message)
 
-    elif records[0][0] != None and records[0][0].split()[0] == "/wall":
+    elif records[0][0] != None and records[0][0].split()[0] == "/announcement":
         do_wall(update.message)
 
     else:
@@ -279,11 +278,6 @@ def submit(update, context):
         update.message.reply_text('Отправил ваше сообщение админу')
 
 
-# function to handle errors occured in the dispatcher 
-def error(update, context):
-    update.message.reply_text('Произошла ошибка, напишите @pavtiger')
-
-
 def task(update, context):
     admin = check_admin(update.message.from_user["id"])
 
@@ -301,7 +295,7 @@ def score(update, context):
     update_last_cmd(update.message.text, update.message.from_user["id"])
     admin = check_admin(update.message.from_user["id"])
 
-    q = f'SELECT * FROM public.people'
+    q = f'SELECT * FROM public.people ORDER by "Reputation" desc'
     dat = sqlio.read_sql_query(q, conn)
     
     ans = ""
@@ -403,7 +397,7 @@ def main():
     dispatcher.add_handler(CommandHandler("status", status))
     dispatcher.add_handler(CommandHandler("clear", clear))
     dispatcher.add_handler(CommandHandler("tasks", problems))
-    dispatcher.add_handler(CommandHandler("wall", wall))
+    dispatcher.add_handler(CommandHandler("announcement", wall))
 
 
     dispatcher.add_handler(CallbackQueryHandler(button))
