@@ -55,6 +55,7 @@ def fetch(query):
     return cursor.fetchall()
 
 
+
 # function to handle the /start command
 def start(update, context):
     update_last_cmd(update.message.text, update.message.from_user["id"])
@@ -71,7 +72,7 @@ def start(update, context):
         kb = [[KeyboardButton('/status')], [KeyboardButton('/tasks')], [KeyboardButton('/help')]]
         kb_markup = ReplyKeyboardMarkup(resize_keyboard=True, keyboard=kb)
         update.message.bot.send_message(chat_id=update.message.chat_id,
-            text="Здравствуйте, вы участник. Ведущий будет отправлять вам задания, на которые нужно присылать ответы картинкой с подписью или просто текстом. Если вы хотите переключить текущее задание нажмите кнопку /tasks. Также можно воспользоваться кнопкой /status и /help. Поддержка и предложения: @pavTiger",
+            text="Здравствуйте, вы участник. Ведущий будет отправлять вам задания, на которые нужно присылать ответы картинкой с подписью или просто текстом. Пожалуйста, отправляейте весь ответ одним сообщением. Если вы хотите переключить текущее задание нажмите кнопку /tasks. Также можно воспользоваться кнопкой /status и /help. Поддержка и предложения: @pavTiger",
             reply_markup=kb_markup)
     else:
         if records[0][0]:  # Is Admin
@@ -86,6 +87,7 @@ def start(update, context):
             update.message.bot.send_message(chat_id=update.message.chat_id,
                 text="Приятно снова вас видеть",
                 reply_markup=kb_markup)
+
 
 
 def button(update, context):
@@ -140,11 +142,13 @@ def button(update, context):
                 bot.edit_message_text(text=f"Другой админ ответил: {query.data}", chat_id=m[0], message_id=m[1])
 
 
+
 # function to handle the /help command
 def help(update, context):
     update_last_cmd(update.message.text, update.message.from_user["id"])
     update.message.reply_text("```\n   __ __   ____   __    ___\n  / // /  / __/  / /   / _ | \n / _  /  / _/   / /__ / ___/\n/_//_/  /___/  /____//_/\n```",
         parse_mode=telegram.ParseMode.MARKDOWN_V2)
+
 
 
 def do_task(message):
@@ -175,9 +179,14 @@ def do_task(message):
             cursor.execute(q)
             conn.commit()
 
+        q = f'UPDATE public.people SET "ActiveTaskID" = {get_last_task_id()} WHERE "ID" = {message.from_user["id"]};'
+        cursor.execute(q)
+        conn.commit()
+
         message.reply_text('Разослал ваше задание всем')
     else:
         message.reply_text('Вы не админ')
+
 
 
 def do_wall(message):
@@ -202,6 +211,7 @@ def do_wall(message):
         message.reply_text('Вы не админ')
 
 
+
 # submit
 def submit(update, context):
     # triggered by user (general text messages)
@@ -213,6 +223,7 @@ def submit(update, context):
     if records[0][0] != None and records[0][0].split()[0] in ["/comment_reject", "/comment_ok"]:
         bot.send_message(chat_id=records[0][0].split()[1], text=update.message.text)
         update_last_cmd(update.message.text, user["id"])
+        message.reply_text('Коментарий отправлен')
 
     elif records[0][0] != None and records[0][0].split()[0] == "/tasks":
         try:
