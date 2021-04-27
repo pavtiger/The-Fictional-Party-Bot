@@ -223,7 +223,7 @@ def submit(update, context):
     if records[0][0] != None and records[0][0].split()[0] in ["/comment_reject", "/comment_ok"]:
         bot.send_message(chat_id=records[0][0].split()[1], text=update.message.text)
         update_last_cmd(update.message.text, user["id"])
-        message.reply_text('Коментарий отправлен')
+        update.message.reply_text('Коментарий отправлен')
 
     elif records[0][0] != None and records[0][0].split()[0] == "/tasks":
         try:
