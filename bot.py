@@ -7,10 +7,10 @@ import telegram
 
 from my_token import my_token
 
-conn = psycopg2.connect(dbname='TelegramActivities', user='sa', 
+conn = psycopg2.connect(dbname='TelegramActivities', user='sa',
                         password='1qaz3edc5tgb', host='192.168.1.81', port=5433)
 cursor = conn.cursor()
- 
+
 
 
 def check_admin(userid):
@@ -61,9 +61,9 @@ def start(update, context):
     update_last_cmd(update.message.text, update.message.from_user["id"])
     user = update.message.from_user
     name = user["id"]
-    
+
     records = fetch(f'SELECT "IsAdmin" FROM public.people WHERE "ID" = {user["id"]};')
-    
+
     if records == []:
         q = f'INSERT INTO public.people("ID", "FirstName", "LastName", "Username") VALUES ({user["id"]}, \'{check_none(user["first_name"])}\', \'{check_none(user["last_name"])}\', \'{user["username"]}\');'
         cursor.execute(q)
@@ -135,7 +135,7 @@ def button(update, context):
             if query.data == "reject":
                 bot.send_message(chat_id=query["message"]["chat"]["id"], text="Напишите коментарий к отклонению")
                 update_last_cmd("/comment_reject " + str(records[0][0]), query["message"]["chat"]["id"])
-                
+
             bot.send_message(chat_id=records[0][0], text="Ваше решение отклонили 😞")
 
 
@@ -290,7 +290,7 @@ def submit(update, context):
             cursor.execute(q)
             conn.commit()
 
-        update.message.reply_text('Отправил ваше сообщение админу')
+        update.message.reply_text('Отправил ваше решение админу')
 
 
 def task(update, context):
@@ -304,7 +304,7 @@ def task(update, context):
             update.message.reply_text("Введите задание")
     else:
         update.message.reply_text("Вы не админ")
-        
+
 
 def score(update, context):
     update_last_cmd(update.message.text, update.message.from_user["id"])
@@ -312,7 +312,7 @@ def score(update, context):
 
     q = f'SELECT * FROM public.people ORDER by "Reputation" desc'
     dat = sqlio.read_sql_query(q, conn)
-    
+
     ans = ""
     for index, row in dat.iterrows():
         ans += f'{str(row["Reputation"])} - {"".join(row["FirstName"].rstrip())} {"".join(row["LastName"].rstrip())}\n';
@@ -372,7 +372,7 @@ def problems(update, context):
     else:
         q = f'SELECT * FROM public.tasks AS T WHERE not EXISTS( SELECT * FROM public.packages AS P WHERE P."TaskID" = T."ID" and "UserID" = {update.message.from_user["id"]} and "Status" = 1 )'
         dat = sqlio.read_sql_query(q, conn)
-        
+
         ans = ""
         for index, row in dat.iterrows():
             ans += f'{str(row["ID"])}: {"".join(row["Text"].rstrip())}\n';
@@ -395,7 +395,7 @@ def wall(update, context):
 
 
 def main():
-    # create the updater, that will automatically create also a dispatcher and a queue to 
+    # create the updater, that will automatically create also a dispatcher and a queue to
     # make them dialoge
 
     global bot
