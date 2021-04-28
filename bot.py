@@ -131,8 +131,11 @@ def button(update, context):
             q = f'UPDATE public.packages SET "Status" = -1 WHERE "MessageID" = {query["message"]["message_id"]} and "AdminID" = {query["message"]["chat"]["id"]}'
             cursor.execute(q)
             conn.commit()
-            bot.send_message(chat_id=query["message"]["chat"]["id"], text="Напишите коментарий к отклонению")
-            update_last_cmd("/comment_reject " + str(records[0][0]), query["message"]["chat"]["id"])
+
+            if query.data == "reject":
+                bot.send_message(chat_id=query["message"]["chat"]["id"], text="Напишите коментарий к отклонению")
+                update_last_cmd("/comment_reject " + str(records[0][0]), query["message"]["chat"]["id"])
+                
             bot.send_message(chat_id=records[0][0], text="Ваше решение отклонили 😞")
 
 
@@ -262,7 +265,8 @@ def submit(update, context):
             keyboard = [
                 [InlineKeyboardButton("Отлично", callback_data='ok')],
                 [InlineKeyboardButton("Хорошо с комментарием", callback_data='comment')],
-                [InlineKeyboardButton("Отклонить", callback_data='reject')]
+                [InlineKeyboardButton("Отклонить с коментарием", callback_data='reject')],
+                [InlineKeyboardButton("Отклонить!", callback_data='just_reject')]
             ]
 
             reply_markup = InlineKeyboardMarkup(keyboard)
